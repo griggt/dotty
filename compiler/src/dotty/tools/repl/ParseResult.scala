@@ -52,6 +52,11 @@ object Load {
   val command: String = ":load"
 }
 
+case class JavapOf(args: String) extends Command
+object JavapOf {
+  val command: String = ":javap"
+}
+
 /** To find out the type of an expression you may simply do:
  *
  * ```
@@ -101,6 +106,7 @@ case object Help extends Command {
       |
       |:help                    print this summary
       |:load <path>             interpret lines in a file
+      |:javap <path|class>      disassemble a file or class name
       |:quit                    exit the interpreter
       |:type <expression>       evaluate the type of the given expression
       |:doc <expression>        print the documentation for the given expression
@@ -128,7 +134,8 @@ object ParseResult {
     Imports.command -> (_  => Imports),
     Load.command -> (arg => Load(arg)),
     TypeOf.command -> (arg => TypeOf(arg)),
-    DocOf.command -> (arg => DocOf(arg))
+    DocOf.command -> (arg => DocOf(arg)),
+    JavapOf.command -> (arg => JavapOf(arg))
   )
 
   def apply(source: SourceFile)(implicit state: State): ParseResult = {

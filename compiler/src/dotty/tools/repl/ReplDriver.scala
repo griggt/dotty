@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets
 
 import dotty.tools.dotc.ast.Trees._
 import dotty.tools.dotc.ast.{tpd, untpd}
+import dotty.tools.dotc.ast.tpd.TreeOps
 import dotty.tools.dotc.core.Contexts._
 import dotty.tools.dotc.core.Phases.{unfusedPhases, typerPhase}
 import dotty.tools.dotc.core.Denotations.Denotation
@@ -14,7 +15,7 @@ import dotty.tools.dotc.core.NameKinds.SimpleNameKind
 import dotty.tools.dotc.core.NameOps._
 import dotty.tools.dotc.core.Names.Name
 import dotty.tools.dotc.core.StdNames._
-import dotty.tools.dotc.core.Symbols.{Symbol, defn}
+import dotty.tools.dotc.core.Symbols._
 import dotty.tools.dotc.interactive.Completion
 import dotty.tools.dotc.printing.SyntaxHighlighting
 import dotty.tools.dotc.reporting.MessageRendering
@@ -96,6 +97,8 @@ class ReplDriver(settings: Array[String],
     compiler = new ReplCompiler
     rendering = new Rendering(classLoader)
   }
+
+  private[repl] def replClassLoader()(using Context) = rendering.classLoader()
 
   private var rootCtx: Context = _
   private var shouldStart: Boolean = _
@@ -391,6 +394,12 @@ class ReplDriver(settings: Array[String],
         state
       }
 
+    case JavapOf(line) =>
+      given DisassemblerRepl = DisassemblerRepl(this, state)
+      val opts = JavapOptions.parse(ReplStrings.words(line))
+      disassemble(Javap, opts)
+      state
+
     case TypeOf(expr) =>
       expr match {
         case "" => out.println(s":type <expression>")
@@ -418,9 +427,118 @@ class ReplDriver(settings: Array[String],
       state
   }
 
+  private def disassemble(tool: Disassembler, opts: DisassemblerOptions)(using DisassemblerRepl): Unit = {
+    if opts.targets.isEmpty || opts.flags.contains("-help") then
+      out.println(tool.helpText)
+    else
+      import DisResult._
+      tool(opts).foreach {
+        case DisSuccess(target, results) =>
+          val filter = tool.outputFilter(target, opts)
+          out.println(filter(results))
+        case DisError(err) =>
+          out.println(err)
+      }
+  }
+
   /** shows all errors nicely formatted */
   private def displayErrors(errs: Seq[Diagnostic])(implicit state: State): State = {
     errs.map(rendering.formatError).map(_.msg).foreach(out.println)
     state
   }
+
+  extension (sym: Symbol)(using Context)
+    // borrowed from ExtractDependencies#recordDependency and adapted to handle @targetName
+    def binaryClassName: String =
+      val builder = new StringBuilder
+      val pkg = sym.enclosingPackageClass
+      if !pkg.isEffectiveRoot then
+        builder.append(pkg.fullName.mangledString)
+        builder.append(".")
+      import dotty.tools.dotc.core.NameKinds._
+      val flatName = /*sym.flatName*/ sym.maybeOwner.fullNameSeparated(FlatName, FlatName, sym.targetName)
+      val clsFlatName = if sym.is(JavaDefined) then flatName.stripModuleClassSuffix else flatName
+      builder.append(clsFlatName.mangledString)
+      builder.toString
+
+  def disassemblyTargetsLastWrapper(state: State): List[String] =
+    implicit val newstate = newRun(state)
+    given Context = newstate.context
+
+    def isSyntheticCompanion(sym: Symbol) =
+      sym.is(Module) && sym.is(Synthetic)
+
+    def typeDefs(sym: Symbol): List[String] =
+      sym.info.memberClasses.collect {
+        case x if !isSyntheticCompanion(x.symbol) && !x.symbol.name.isReplWrapperName =>
+          x.symbol.binaryClassName
+      }.toList
+
+    def hasMembers(sym: Symbol): Boolean =
+      val info = sym.info
+      def defs =
+        info.bounds.hi.finalResultType
+          .membersBasedOnFlags(required = Method, excluded = Accessor | ParamAccessor | Synthetic | Private)
+          .filterNot { denot =>
+            defn.topClasses.contains(denot.symbol.owner) || denot.symbol.isConstructor
+          }
+      def vals =
+        info.fields
+          .filterNot(_.symbol.isOneOf(ParamAccessor | Private | Synthetic | Artifact | Module))
+          .filter(_.symbol.name.is(SimpleNameKind))
+      vals.nonEmpty || defs.nonEmpty
+
+    val lastWrapper = s"${str.REPL_SESSION_LINE}${state.objectIndex}"
+    val wrapperModuleClass = List(lastWrapper + "$")
+
+    compiler.typeCheck(lastWrapper).map { tree =>
+      tree.rhs match
+        case Block(id :: Nil, _) =>
+          val sym = id.tpe.typeSymbol
+          typeDefs(sym) ++ (if hasMembers(sym) then wrapperModuleClass else Nil)
+    }.toOption
+    .filterNot(_.isEmpty)
+    .getOrElse(wrapperModuleClass)
+  end disassemblyTargetsLastWrapper
+
+  /** Is `name` a type symbol in REPL scope?
+   *  Returns Some containing its binary class name if so, otherwise None
+   */
+  def binaryClassOfType(name: String)(implicit state0: State): Option[String] =
+    implicit val state = newRun(state0)
+    given Context = state.context
+
+    val typeName =
+      if name.endsWith("$") then s"${name.init}.type"
+      else name
+
+    compiler.typeCheck(s"type $$_ = $typeName", errorsAllowed = true).toOption.flatMap { tree =>
+      tree.rhs match
+        case Block(List(TypeDef(_, x)), _) =>
+          val sym = x.tpe.widenDealias.typeSymbol
+          Option.when(sym.exists && sym.isClass)(sym.binaryClassName)
+    }
+  end binaryClassOfType
+
+  /** Is `name` a symbol in some enclosing class scope?
+   *  Returns Some containing its binary class name if so, otherwise None
+   */
+  def binaryClassOfTerm(name: String)(implicit state0: State): Option[String] =
+    implicit val state = newRun(state0)
+    given Context = state.context
+
+    def extractSymbol(tree: tpd.Tree): Symbol = tree match
+      case tpd.closureDef(defdef) => defdef.rhs.symbol
+      case _ => tree.symbol
+
+    compiler.typeCheck(s"val $$_ = $name").toOption.flatMap { tree =>
+      tree.rhs match
+        case Block((valdef: tpd.ValDef) :: Nil, _) =>
+          val sym = extractSymbol(valdef.rhs)
+          val encl =
+            if sym.is(ModuleVal) then sym.moduleClass
+            else sym.lexicallyEnclosingClass
+          Option.when(encl.exists)(encl.binaryClassName)
+    }
+  end binaryClassOfTerm
 }
