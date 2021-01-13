@@ -150,6 +150,8 @@ trait Quotes { self: runtime.QuoteUnpickler & runtime.QuoteMatching =>
    *           +- Unapply
    *           +- Alternatives
    *
+   *  +- ParamClause -+- TypeParamClause
+   *                  +- TermParamClause
    *
    *  +- TypeRepr -+- NamedType -+- TermRef
    *               |             +- TypeRef
@@ -414,9 +416,9 @@ trait Quotes { self: runtime.QuoteUnpickler & runtime.QuoteMatching =>
 
     /** Methods of the module object `val DefDef` */
     trait DefDefModule { this: DefDef.type =>
-      def apply(symbol: Symbol, rhsFn: List[TypeRepr] => List[List[Term]] => Option[Term]): DefDef
-      def copy(original: Tree)(name: String, typeParams: List[TypeDef], paramss: List[List[ValDef]], tpt: TypeTree, rhs: Option[Term]): DefDef
-      def unapply(ddef: DefDef): (String, List[TypeDef], List[List[ValDef]], TypeTree, Option[Term])
+      def apply(symbol: Symbol, rhsFn: List[List[Tree]] => Option[Term]): DefDef
+      def copy(original: Tree)(name: String, paramss: List[ParamClause], tpt: TypeTree, rhs: Option[Term]): DefDef
+      def unapply(ddef: DefDef): (String, List[ParamClause], TypeTree, Option[Term])
     }
 
     /** Makes extension methods on `DefDef` available without any imports */
@@ -425,8 +427,10 @@ trait Quotes { self: runtime.QuoteUnpickler & runtime.QuoteMatching =>
     /** Extension methods of `DefDef` */
     trait DefDefMethods:
       extension (self: DefDef)
-        def typeParams: List[TypeDef]
-        def paramss: List[List[ValDef]]
+        def paramss: List[ParamClause]
+        def leadingTypeParams: List[TypeDef]
+        def trailingParamss: List[ParamClause]
+        def termParamss: List[TermParamClause]
         def returnTpt: TypeTree
         def rhs: Option[Term]
       end extension
@@ -1920,6 +1924,73 @@ trait Quotes { self: runtime.QuoteUnpickler & runtime.QuoteMatching =>
         def patterns: List[Tree]
       end extension
     end AlternativesMethods
+
+    /** A parameter clause `(x1: X1, ..., xn: Xx)` or `[X1, ..., Xn]` */
+    type ParamClause <: AnyRef
+
+    /** Module object of `type ParamClause`  */
+    val ParamClause: ParamClauseModule
+
+    /** Methods of the module object `val ParamClause` */
+    trait ParamClauseModule { this: ParamClause.type =>
+    }
+
+    /** Makes extension methods on `ParamClause` available without any imports */
+    given ParamClauseMethods: ParamClauseMethods
+
+    /** Extension methods of `ParamClause` */
+    trait ParamClauseMethods:
+      extension (self: ParamClause)
+        def params: List[ValDef] | List[TypeDef]
+    end ParamClauseMethods
+
+    /** A term parameter clause `(x1: X1, ..., xn: Xx)` */
+    type TermParamClause <: ParamClause
+
+    /** `TypeTest` that allows testing at runtime in a pattern match if a `ParamClause` is a `TermParamClause` */
+    given TermParamClauseTypeTest: TypeTest[ParamClause, TermParamClause]
+
+    /** Module object of `type TermParamClause`  */
+    val TermParamClause: TermParamClauseModule
+
+    /** Methods of the module object `val TermParamClause` */
+    trait TermParamClauseModule { this: TermParamClause.type =>
+      def apply(params: List[ValDef]): TermParamClause
+      def unapply(x: TermParamClause): Some[List[ValDef]]
+    }
+
+    /** Makes extension methods on `TermParamClause` available without any imports */
+    given TermParamClauseMethods: TermParamClauseMethods
+
+    /** Extension methods of `TermParamClause` */
+    trait TermParamClauseMethods:
+      extension (self: TermParamClause)
+        def params: List[ValDef]
+    end TermParamClauseMethods
+
+    /** A type parameter clause `[X1, ..., Xn]` */
+    type TypeParamClause <: ParamClause
+
+    /** `TypeTest` that allows testing at runtime in a pattern match if a `ParamClause` is a `TypeParamClause` */
+    given TypeParamClauseTypeTest: TypeTest[ParamClause, TypeParamClause]
+
+    /** Module object of `type TypeParamClause`  */
+    val TypeParamClause: TypeParamClauseModule
+
+    /** Methods of the module object `val TypeParamClause` */
+    trait TypeParamClauseModule { this: TypeParamClause.type =>
+      def apply(params: List[TypeDef]): TypeParamClause
+      def unapply(x: TypeParamClause): Some[List[TypeDef]]
+    }
+
+    /** Makes extension methods on `TypeParamClause` available without any imports */
+    given TypeParamClauseMethods: TypeParamClauseMethods
+
+    /** Extension methods of `TypeParamClause` */
+    trait TypeParamClauseMethods:
+      extension (self: TypeParamClause)
+        def params: List[TypeDef]
+    end TypeParamClauseMethods
 
     //////////////////////
     //    SELECTORS     //
@@ -3900,9 +3971,9 @@ trait Quotes { self: runtime.QuoteUnpickler & runtime.QuoteMatching =>
           case vdef @ ValDef(_, tpt, rhs) =>
             val owner = vdef.symbol
             foldTrees(foldTree(x, tpt)(owner), rhs)(owner)
-          case ddef @ DefDef(_, tparams, vparamss, tpt, rhs) =>
+          case ddef @ DefDef(_, paramss, tpt, rhs) =>
             val owner = ddef.symbol
-            foldTrees(foldTree(vparamss.foldLeft(foldTrees(x, tparams)(owner))((acc, y) => foldTrees(acc, y)(owner)), tpt)(owner), rhs)(owner)
+            foldTrees(foldTree(paramss.foldLeft(x)((acc, y) => foldTrees(acc, y.params)(owner)), tpt)(owner), rhs)(owner)
           case tdef @ TypeDef(_, rhs) =>
             val owner = tdef.symbol
             foldTree(x, rhs)(owner)
@@ -4011,7 +4082,11 @@ trait Quotes { self: runtime.QuoteUnpickler & runtime.QuoteMatching =>
             ValDef.copy(tree)(tree.name, tpt1, rhs1)
           case tree: DefDef =>
             val owner = tree.symbol
-            DefDef.copy(tree)(tree.name, transformSubTrees(tree.typeParams)(owner), tree.paramss mapConserve (x => transformSubTrees(x)(owner)), transformTypeTree(tree.returnTpt)(owner), tree.rhs.map(x => transformTerm(x)(owner)))
+            val newParamClauses = tree.paramss.mapConserve {
+              case TypeParamClause(params) => TypeParamClause(transformSubTrees(params)(owner))
+              case TermParamClause(params) => TermParamClause(transformSubTrees(params)(owner))
+            }
+            DefDef.copy(tree)(tree.name, newParamClauses, transformTypeTree(tree.returnTpt)(owner), tree.rhs.map(x => transformTerm(x)(owner)))
           case tree: TypeDef =>
             val owner = tree.symbol
             TypeDef.copy(tree)(tree.name, transformTree(tree.rhs)(owner))
