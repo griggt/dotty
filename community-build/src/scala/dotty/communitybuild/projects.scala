@@ -590,6 +590,13 @@ object projects:
     dependencies = List(scalatest, scalatestplusJunit, scalatestplusScalacheck)
   )
 
+  lazy val monocle = SbtCommunityProject(
+    project = "Monocle",
+    // core{JVM,JS}/test and macros{JVM,JS}/test have failures; have not investigated
+    sbtTestCommand = "testJVM/test; testJS/test",
+    dependencies = List(cats, munit, discipline, disciplineMunit)
+  )
+
 end projects
 
 def allProjects = List(
@@ -655,6 +662,7 @@ def allProjects = List(
   projects.izumiReflect,
   projects.perspective,
   projects.akka,
+  projects.monocle,
 )
 
 lazy val projectMap = allProjects.groupBy(_.project)

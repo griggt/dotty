@@ -140,6 +140,7 @@ class CommunityBuildTestB extends CommunityBuildTest:
   @Test def effpi = projects.effpi.run()
   @Test def intent = projects.intent.run()
   @Test def minitest = projects.minitest.run()
+  @Test def monocle = projects.monocle.run()
   @Test def munit = projects.munit.run()
   @Test def scodec = projects.scodec.run()
   @Test def scodecBits = projects.scodecBits.run()
