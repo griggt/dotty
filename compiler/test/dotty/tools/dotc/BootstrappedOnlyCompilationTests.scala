@@ -152,7 +152,8 @@ class BootstrappedOnlyCompilationTests {
     implicit val testGroup: TestGroup = TestGroup("testPicklingLanguage")
     val runtimeFilter = FileFilter.exclude(List("Tuple.scala", "Arrays.scala", "EnumValue.scala", "FunctionXXL.scala", "LazyVals.scala", "MatchCase.scala", "Scala3RunTime.scala", "TupleXXL.scala", "TypeBox.scala", "function", "stdLibPatches")) // TODO
     aggregateTests(
-      compileDir("compiler/src/dotty/tools/dotc/ast", picklingWithCompilerOptions),
+      //compileDir("compiler/src/dotty/tools/dotc/ast", picklingWithCompilerOptions),
+      compileDir("library/src/scala/runtime/stdLibPatches", picklingWithCompilerOptions),
       //compileFilesInDir("library/src/scala/runtime", picklingWithCompilerOptions, runtimeFilter),
       //compileFile("library/src/scala/runtime/stdLibPatches/language.scala", picklingWithCompilerOptions)
     ).limitThreads(4).checkCompile()
