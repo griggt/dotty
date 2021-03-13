@@ -38,7 +38,7 @@ import TastyBuffer._
 import scala.annotation.{switch, tailrec}
 import scala.collection.mutable.ListBuffer
 import scala.collection.mutable
-import config.Printers.pickling
+import config.Printers.{pickling,unpickling}
 import quoted.PickledQuotes
 
 import dotty.tools.tasty.TastyFormat._
@@ -293,7 +293,7 @@ class TreeUnpickler(reader: TastyReader,
     def readType()(using Context): Type = {
       val start = currentAddr
       val tag = readByte()
-      pickling.println(s"reading type ${astTagToString(tag)} at $start, ${ctx.source}")
+      unpickling.println(s"reading type ${astTagToString(tag)} at $start, ${ctx.source}")
 
       def registeringType[T](tp: Type, op: => T): T = {
         typeAtAddr(start) = tp
@@ -562,7 +562,7 @@ class TreeUnpickler(reader: TastyReader,
       val rhsIsEmpty = nothingButMods(end)
       if (!rhsIsEmpty) skipTree()
       val (givenFlags, annotFns, privateWithin) = readModifiers(end)
-      pickling.println(i"creating symbol $name at $start with flags $givenFlags")
+      unpickling.println(i"creating symbol $name at $start with flags $givenFlags")
       val flags = normalizeFlags(tag, givenFlags, name, isAbsType, rhsIsEmpty)
       def adjustIfModule(completer: LazyType) =
         if (flags.is(Module)) adjustModuleCompleter(completer, name) else completer
@@ -570,7 +570,7 @@ class TreeUnpickler(reader: TastyReader,
       val sym =
         roots.find(root => (root.owner eq ctx.owner) && root.name == name) match {
           case Some(rootd) =>
-            pickling.println(i"overwriting ${rootd.symbol} # ${rootd.hashCode}")
+            unpickling.println(i"overwriting ${rootd.symbol} # ${rootd.hashCode}")
             rootd.symbol.coord = coord
             rootd.info = adjustIfModule(
                 new Completer(subReader(start, end)) with SymbolLoaders.SecondCompleter)
@@ -581,8 +581,10 @@ class TreeUnpickler(reader: TastyReader,
           case _ =>
             val completer = adjustIfModule(new Completer(subReader(start, end)))
             if (isClass)
+              unpickling.println(s"new class symbol $name")
               newClassSymbol(ctx.owner, name.asTypeName, flags, completer, privateWithin, coord)
             else
+              unpickling.println(s"new symbol $name")
               newSymbol(ctx.owner, name, flags, completer, privateWithin, coord)
         }
       val annots =  annotFns.map(_(sym.owner))
@@ -603,6 +605,7 @@ class TreeUnpickler(reader: TastyReader,
       }
       registerSym(start, sym)
       if (isClass) {
+        unpickling.println(s"setting decls on completer for $sym")
         sym.completer.withDecls(newScope)
         forkAt(templateStart).indexTemplateParams()(using localContext(sym))
       }
@@ -823,7 +826,7 @@ class TreeUnpickler(reader: TastyReader,
       def ta =  ctx.typeAssigner
 
       val name = readName()
-      pickling.println(s"reading def of $name at $start")
+      unpickling.println(s"reading def of $name at $start")
       val tree: MemberDef = tag match {
         case DEFDEF =>
           val paramDefss = readParamss()(using localCtx)
@@ -874,7 +877,7 @@ class TreeUnpickler(reader: TastyReader,
           }
           else {
             sym.info = ExprType(tpt.tpe)
-            pickling.println(i"reading param alias $name -> $currentAddr")
+            unpickling.println(i"reading param alias $name -> $currentAddr")
             DefDef(Nil, tpt)
           }
       }
@@ -1044,7 +1047,7 @@ class TreeUnpickler(reader: TastyReader,
       if (sctx `ne` ctx) return readTerm()(using sctx)
       val start = currentAddr
       val tag = readByte()
-      pickling.println(s"reading term ${astTagToString(tag)} at $start, ${ctx.source}")
+      unpickling.println(s"reading term ${astTagToString(tag)} at $start, ${ctx.source}")
 
       def readPathTerm(): Tree = {
         goto(start)
@@ -1379,7 +1382,7 @@ class TreeUnpickler(reader: TastyReader,
           case Some(posUnpickler) =>
             sourceFile.setLineIndicesFromLineSizes(posUnpickler.lineSizes)
           case _ =>
-        pickling.println(i"source change at $addr: $path")
+        unpickling.println(i"source change at $addr: $path")
         ctx.withSource(sourceFile)
       }
       else ctx
@@ -1397,7 +1400,7 @@ class TreeUnpickler(reader: TastyReader,
       reader: TreeReader, owner: Symbol, mode: Mode, source: SourceFile,
       op: TreeReader => Context ?=> T) extends Trees.Lazy[T] {
     def complete(using Context): T = {
-      pickling.println(i"starting to read at ${reader.reader.currentAddr} with owner $owner")
+      unpickling.println(i"starting to read at ${reader.reader.currentAddr} with owner $owner")
       atPhaseBeforeTransforms {
         op(reader)(using ctx
           .withOwner(owner)
@@ -1451,13 +1454,13 @@ class TreeUnpickler(reader: TastyReader,
         }
         catch {
           case ex: TreeWithoutOwner =>
-            pickling.println(i"no owner for $addr among $cs%, %")
+            unpickling.println(i"no owner for $addr among $cs%, %")
             throw ex
         }
       try search(children, NoSymbol)
       catch {
         case ex: TreeWithoutOwner =>
-          pickling.println(s"ownerTree = $ownerTree")
+          unpickling.println(s"ownerTree = $ownerTree")
           throw ex
       }
     }

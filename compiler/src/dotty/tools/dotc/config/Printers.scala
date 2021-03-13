@@ -46,5 +46,6 @@ object Printers {
   val transforms = noPrinter
   val typr = noPrinter
   val unapp = noPrinter
+  val unpickling = noPrinter
   val variances = noPrinter
 }

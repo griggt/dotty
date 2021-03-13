@@ -91,9 +91,9 @@ class Pickler extends Phase {
           //if pickling ne noPrinter then
           //  pickling.synchronized {
 
-          if ctx.settings.YtestPickler.value then
-            println(i"**** pickled info of $cls")
-            println(TastyPrinter.show(pickled))
+          // if ctx.settings.YtestPickler.value then  // DEBUG
+          //   println(i"**** pickled info of $cls")
+          //   println(TastyPrinter.show(pickled))
 
           //  }
 

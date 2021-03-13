@@ -1133,6 +1133,7 @@ class Definitions {
     if denot.name == tpnme.Predef.moduleClassName && denot.symbol == ScalaPredefModuleClass then
       patchWith(ScalaPredefModuleClassPatch)
     else if denot.name == tpnme.language.moduleClassName && denot.symbol == LanguageModuleClass then
+      println("PATCH: patching with language module class patch")
       patchWith(LanguageModuleClassPatch)
   end patchStdLibClass
 

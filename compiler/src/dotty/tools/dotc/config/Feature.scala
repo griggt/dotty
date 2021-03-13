@@ -23,7 +23,7 @@ object Feature:
   private val XnamedTypeArguments = experimental("namedTypeArguments")
   private val XgenericNumberLiterals = experimental("genericNumberLiterals")
   private val Xmacros = experimental("macros")
-  private val symbolLiterals: TermName = deprecated("symbolLiterals")
+  private val symbolLiterals = deprecated("symbolLiterals")
 
 /** Is `feature` enabled by by a command-line setting? The enabling setting is
    *

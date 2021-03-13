@@ -764,6 +764,7 @@ trait Checking {
         val foundClasses = path.tpe.classSymbols
         if foundClasses.contains(defn.LanguageModule.moduleClass)
            || foundClasses.contains(defn.LanguageExperimentalModule.moduleClass)
+           || foundClasses.contains(defn.LanguageDeprecatedModule.moduleClass)
         then
           report.error(em"no aliases can be used to refer to a language import", path.srcPos)
 
