@@ -1111,7 +1111,7 @@ class Definitions {
 
     def patch2(denot: ClassDenotation, patchCls: Symbol): Unit =
       val scope = denot.info.decls.openForMutations
-      def recurse(patch: Symbol) = patch.is(Module) && scope.lookup(patch.name).exists
+      def recurse(patch: Symbol) = patch.is(Module) && (scope.lookup(patch.name).exists || patch.name.toString.startsWith("deprecated"))
       if patchCls.exists then
         val patches = patchCls.info.decls.filter(patch =>
           !patch.isConstructor && !patch.isOneOf(PrivateOrSynthetic))
@@ -1122,9 +1122,14 @@ class Definitions {
           patch.ensureCompleted()
           if !recurse(patch) then
             patch.denot = patch.denot.copySymDenotation(owner = denot.symbol)
+            println(s"PATCH: entering patch for $patch")
             scope.enter(patch)
           else if patch.isClass then
-            patch2(scope.lookup(patch.name).asClass, patch)
+            println(s"PATCH: recur for $patch")
+            if scope.lookup(patch.name).exists then
+              patch2(scope.lookup(patch.name).asClass, patch)
+          else
+            println(s"PATCH: skipping $patch")
 
     def patchWith(patchCls: Symbol) =
       denot.sourceModule.info = denot.typeRef // we run into a cyclic reference when patching if this line is omitted
