@@ -87,12 +87,16 @@ class Pickler extends Phase {
               case (row, i) => s"${i}0: ${row.mkString(" ")}"
             }
 
-          // println(i"rawBytes = \n$rawBytes%\n%") // DEBUG
-          if pickling ne noPrinter then
-            pickling.synchronized {
-              println(i"**** pickled info of $cls")
-              println(TastyPrinter.show(pickled))
-            }
+          // println(i"rawBytes for $cls = \n$rawBytes%\n%") // DEBUG
+          //if pickling ne noPrinter then
+          //  pickling.synchronized {
+
+          if ctx.settings.YtestPickler.value then
+            println(i"**** pickled info of $cls")
+            println(TastyPrinter.show(pickled))
+
+          //  }
+
           pickled
         }(using ExecutionContext.global)
       }
