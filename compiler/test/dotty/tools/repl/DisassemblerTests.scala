@@ -235,6 +235,56 @@ class JavapTests extends DisassemblerTest:
     }
 end JavapTests
 
+class AsmpTests extends DisassemblerTest:
+  val packageSeparator = "/"
+
+  @Test def `simple end-to-end` =
+    eval("class Foo1").andThen { implicit state =>
+      run(":asmp -c Foo1")
+      assertDisassemblyIncludes(List(
+        s"public class ${line(1, "Foo1")} {",
+        "public <init>()V",
+        "INVOKESPECIAL java/lang/Object.<init> ()V",
+      ))
+    }
+
+  @Test def `multiple classes in prev entry` =
+    eval {
+      """class Foo2
+        |trait Bar2
+        |""".stripMargin
+    } andThen { implicit state =>
+      run(":asmp -c -")
+      assertDisassemblyIncludes(List(
+        s"public class ${line(1, "Foo2")} {",
+        s"public abstract interface ${line(1, "Bar2")} {",
+      ))
+    }
+
+  @Test def `private selected method` =
+    eval {
+      """class Baz1:
+        |  private def one = 1
+        |  private def two = 2
+        |""".stripMargin
+    } andThen { implicit state =>
+      run(":asmp -p -c Baz1#one")
+      val out = storedOutput()
+      assertDisassemblyIncludes("private one()I", out)
+      assertDisassemblyExcludes("private two()I", out)
+    }
+
+  @Test def `java.lang.String signatures` =
+    fromInitialState { implicit state =>
+      run(":asmp -s java.lang.String")
+      val out = storedOutput()
+      assertDisassemblyIncludes("public static varargs format(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;", out)
+      assertDisassemblyIncludes("public static join(Ljava/lang/CharSequence;Ljava/lang/Iterable;)Ljava/lang/String;", out)
+      assertDisassemblyIncludes("public concat(Ljava/lang/String;)Ljava/lang/String;", out)
+      assertDisassemblyIncludes("public trim()Ljava/lang/String;", out)
+    }
+end AsmpTests
+
 // Test option parsing
 class JavapOptionTests extends ReplTest:
   private def assertFlags(expected: Seq[String], input: Seq[String])(implicit s: State): Unit =
