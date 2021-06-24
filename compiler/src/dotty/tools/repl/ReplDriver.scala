@@ -394,6 +394,12 @@ class ReplDriver(settings: Array[String],
         state
       }
 
+    case AsmpOf(line) =>
+      given DisassemblerRepl = DisassemblerRepl(this, state)
+      val opts = AsmpOptions.parse(ReplStrings.words(line))
+      disassemble(Asmp, opts)
+      state
+
     case JavapOf(line) =>
       given DisassemblerRepl = DisassemblerRepl(this, state)
       val opts = JavapOptions.parse(ReplStrings.words(line))

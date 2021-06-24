@@ -52,6 +52,11 @@ object Load {
   val command: String = ":load"
 }
 
+case class AsmpOf(args: String) extends Command
+object AsmpOf {
+  val command: String = ":asmp"
+}
+
 case class JavapOf(args: String) extends Command
 object JavapOf {
   val command: String = ":javap"
@@ -106,6 +111,7 @@ case object Help extends Command {
       |
       |:help                    print this summary
       |:load <path>             interpret lines in a file
+      |:asmp <path|class>       disassemble a file or class name
       |:javap <path|class>      disassemble a file or class name
       |:quit                    exit the interpreter
       |:type <expression>       evaluate the type of the given expression
@@ -135,6 +141,7 @@ object ParseResult {
     Load.command -> (arg => Load(arg)),
     TypeOf.command -> (arg => TypeOf(arg)),
     DocOf.command -> (arg => DocOf(arg)),
+    AsmpOf.command -> (arg => AsmpOf(arg)),
     JavapOf.command -> (arg => JavapOf(arg))
   )
 
