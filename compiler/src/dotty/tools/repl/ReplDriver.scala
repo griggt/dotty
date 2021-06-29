@@ -394,6 +394,12 @@ class ReplDriver(settings: Array[String],
         state
       }
 
+    case JavapOf(line) =>
+      given DisassemblerRepl = DisassemblerRepl(this, state)
+      val opts = JavapOptions.parse(ReplStrings.words(line))
+      disassemble(Javap, opts)
+      state
+
     case TypeOf(expr) =>
       expr match {
         case "" => out.println(s":type <expression>")
